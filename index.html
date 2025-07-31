@@ -374,24 +374,45 @@
             document.getElementById('loading').style.display = 'none';
             document.getElementById('results').style.display = 'block';
             
-            // Handle nested JSON structure from Make.com
+            // Handle the complex nested JSON structure from Make.com
             let content = '';
+            console.log('Raw data structure:', data);
+            
             if (data.research_data) {
                 if (typeof data.research_data === 'string') {
                     try {
+                        // First level of JSON parsing
                         const parsed = JSON.parse(data.research_data);
-                        content = parsed.message?.content || parsed.content || data.research_data;
+                        if (parsed.content) {
+                            content = parsed.content;
+                        } else if (parsed.research_data) {
+                            // Second level - research_data contains another JSON string
+                            if (typeof parsed.research_data === 'string') {
+                                try {
+                                    const innerParsed = JSON.parse(parsed.research_data);
+                                    content = innerParsed.message?.content || innerParsed.content || parsed.research_data;
+                                } catch (e) {
+                                    content = parsed.research_data;
+                                }
+                            } else {
+                                content = parsed.research_data.content || parsed.research_data.message?.content || JSON.stringify(parsed.research_data);
+                            }
+                        } else {
+                            content = JSON.stringify(parsed);
+                        }
                     } catch (e) {
                         content = data.research_data;
                     }
+                } else if (data.research_data.content) {
+                    content = data.research_data.content;
                 } else {
-                    content = data.research_data.content || data.research_data.message?.content || JSON.stringify(data.research_data);
+                    content = JSON.stringify(data.research_data);
                 }
             } else {
                 content = data.content || JSON.stringify(data);
             }
             
-            console.log('Extracted content for parsing:', content.substring(0, 300));
+            console.log('Final extracted content:', content.substring(0, 500));
             
             // Display summary
             document.getElementById('summaryContent').innerHTML = formatSummary(content);
@@ -405,7 +426,7 @@
             if (courses.length > 0) {
                 courseGrid.innerHTML = courses.map(course => createCourseCard(course)).join('');
             } else {
-                courseGrid.innerHTML = '<p style="text-align: center; color: #6b7280; grid-column: 1 / -1;">No structured course data found. Check the raw summary above for details.</p>';
+                courseGrid.innerHTML = '<p style="text-align: center; color: #6b7280; grid-column: 1 / -1;">No structured course data found. Check the console for debugging info.</p>';
             }
         }
 
