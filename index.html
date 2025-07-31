@@ -378,41 +378,58 @@
             let content = '';
             console.log('Raw data structure:', data);
             
-            if (data.research_data) {
+            if (data.research_data && data.research_data.content) {
+                try {
+                    // First level: Parse the content string which contains JSON
+                    const firstLevel = JSON.parse(data.research_data.content);
+                    console.log('First level parsed:', firstLevel);
+                    
+                    if (firstLevel.research_data) {
+                        try {
+                            // Second level: Parse the research_data string which contains another JSON
+                            const secondLevel = JSON.parse(firstLevel.research_data);
+                            console.log('Second level parsed:', secondLevel);
+                            
+                            if (secondLevel.message && secondLevel.message.content) {
+                                // This is where the actual content is!
+                                content = secondLevel.message.content;
+                            } else if (secondLevel.content) {
+                                content = secondLevel.content;
+                            } else {
+                                // Fallback to the raw second level
+                                content = JSON.stringify(secondLevel);
+                            }
+                        } catch (e) {
+                            console.log('Second level parsing failed, using first level research_data as string');
+                            content = firstLevel.research_data;
+                        }
+                    } else if (firstLevel.content) {
+                        content = firstLevel.content;
+                    } else {
+                        content = JSON.stringify(firstLevel);
+                    }
+                } catch (e) {
+                    console.log('First level parsing failed, using raw content');
+                    content = data.research_data.content;
+                }
+            } else if (data.research_data) {
+                // Direct research_data without content wrapper
                 if (typeof data.research_data === 'string') {
                     try {
-                        // First level of JSON parsing
                         const parsed = JSON.parse(data.research_data);
-                        if (parsed.content) {
-                            content = parsed.content;
-                        } else if (parsed.research_data) {
-                            // Second level - research_data contains another JSON string
-                            if (typeof parsed.research_data === 'string') {
-                                try {
-                                    const innerParsed = JSON.parse(parsed.research_data);
-                                    content = innerParsed.message?.content || innerParsed.content || parsed.research_data;
-                                } catch (e) {
-                                    content = parsed.research_data;
-                                }
-                            } else {
-                                content = parsed.research_data.content || parsed.research_data.message?.content || JSON.stringify(parsed.research_data);
-                            }
-                        } else {
-                            content = JSON.stringify(parsed);
-                        }
+                        content = parsed.message?.content || parsed.content || data.research_data;
                     } catch (e) {
                         content = data.research_data;
                     }
-                } else if (data.research_data.content) {
-                    content = data.research_data.content;
                 } else {
-                    content = JSON.stringify(data.research_data);
+                    content = data.research_data.content || JSON.stringify(data.research_data);
                 }
             } else {
                 content = data.content || JSON.stringify(data);
             }
             
-            console.log('Final extracted content:', content.substring(0, 500));
+            console.log('Final extracted content (first 500 chars):', content.substring(0, 500));
+            console.log('Full extracted content length:', content.length);
             
             // Display summary
             document.getElementById('summaryContent').innerHTML = formatSummary(content);
@@ -431,112 +448,151 @@
         }
 
         function formatSummary(content) {
-            // Extract the full detailed research content from Perplexity
+            // Extract the introductory paragraph before the table
             const lines = content.split('\n');
-            let summaryContent = [];
-            let foundMainContent = false;
+            let summaryLines = [];
+            let foundStart = false;
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 
-                // Skip JSON wrapper content
-                if (line.includes('"status"') || line.includes('research_data') || line.includes('"index"')) {
-                    continue;
+                // Skip empty lines
+                if (!line) continue;
+                
+                // Start capturing when we find the opening sentence
+                if (!foundStart && line.includes('**') && 
+                    (line.toLowerCase().includes('training courses') || 
+                     line.toLowerCase().includes('available') ||
+                     line.toLowerCase().includes('several') ||
+                     line.toLowerCase().includes('multiple'))) {
+                    foundStart = true;
                 }
                 
-                // Start capturing after we find substantive content
-                if (!foundMainContent && line.length > 50 && 
-                    (line.toLowerCase().includes('cybersecurity') || 
-                     line.toLowerCase().includes('data analytics') || 
-                     line.toLowerCase().includes('digital marketing') ||
-                     line.toLowerCase().includes('training') ||
-                     line.toLowerCase().includes('available'))) {
-                    foundMainContent = true;
+                // Stop when we hit the table header
+                if (line.includes('| Provider') || 
+                    line.includes('|---------') ||
+                    line.includes('|---')) {
+                    break;
                 }
                 
-                // Capture content until we hit the table structure
-                if (foundMainContent) {
-                    // Stop at table headers or course listings
-                    if (line.includes('| Provider') || 
-                        line.includes('|---') || 
-                        line.includes('### 1.') ||
-                        line.includes('## Course Details') ||
-                        (line.includes('|') && line.split('|').length > 4)) {
-                        break;
-                    }
-                    
-                    // Add meaningful content lines
-                    if (line.length > 10 && 
-                        !line.startsWith('#') && 
-                        !line.includes('---')) {
-                        summaryContent.push(line);
+                // Capture content lines
+                if (foundStart) {
+                    // Skip lines that are clearly table formatting
+                    if (!line.startsWith('|') && line.length > 10) {
+                        summaryLines.push(line);
                     }
                 }
             }
             
-            // Clean up and format the content
-            if (summaryContent.length > 0) {
-                let formattedSummary = summaryContent.join(' ')
-                    .replace(/\*\*/g, '<strong>').replace(/\*\*/g, '</strong>')
-                    .replace(/- /g, '<br>• ')
-                    .replace(/\n\n/g, '</p><p>')
+            // Process the summary content
+            if (summaryLines.length > 0) {
+                let summary = summaryLines.join(' ').trim();
+                
+                // Clean up and format
+                summary = summary
+                    .replace(/\*\*/g, '<strong>')  // Convert markdown bold
+                    .replace(/\*([^*]+)\*/g, '<em>$1</em>')  // Convert markdown italic
+                    .replace(/\s+/g, ' ')  // Clean up extra spaces
                     .trim();
                 
-                // Wrap in paragraph tags if not already formatted
-                if (!formattedSummary.includes('<p>')) {
-                    formattedSummary = `<p>${formattedSummary}</p>`;
+                // If it's a very long single sentence, try to break it naturally
+                if (summary.length > 300 && summary.split('.').length > 2) {
+                    const sentences = summary.split('. ');
+                    if (sentences.length > 1) {
+                        summary = sentences.join('.</p><p>') + '.';
+                        summary = `<p>${summary}</p>`;
+                    } else {
+                        summary = `<p>${summary}</p>`;
+                    }
+                } else {
+                    summary = `<p>${summary}</p>`;
                 }
                 
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">${formattedSummary}</div>`;
+                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">${summary}</div>`;
             }
             
-            // Fallback based on the query
+            // Enhanced fallback based on the query
             const queryLower = queryText.toLowerCase();
-            if (queryLower.includes('cybersecurity')) {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p>Multiple cybersecurity training and certification options have been identified within your budget. These courses cover essential topics including ethical hacking, network defense, digital forensics, and cloud security fundamentals.</p></div>`;
+            if (queryLower.includes('digital marketing')) {
+                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p><strong>Several digital marketing training courses under 1,500 CAD are available for small business owners in British Columbia</strong>, offering a range of formats, durations, and outcomes from certified, legitimate providers.</p></div>`;
+            } else if (queryLower.includes('cybersecurity')) {
+                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p><strong>Several reputable providers offer online cybersecurity certification courses under 2,000 CAD in Canada</strong>, with options suitable for entry-level and career-transitioning professionals.</p></div>`;
             } else if (queryLower.includes('data analytics')) {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p>Multiple data analytics training options for beginners have been identified within your budget. These courses provide comprehensive coverage of data analysis techniques, tools, and methodologies.</p></div>`;
-            } else if (queryLower.includes('digital marketing')) {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p>Multiple digital marketing training options have been identified within your budget. These courses cover essential digital marketing strategies, tools, and best practices.</p></div>`;
+                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p><strong>Multiple data analytics training options for beginners have been identified within your budget.</strong> These courses provide comprehensive coverage of data analysis techniques, tools, and methodologies.</p></div>`;
             } else {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p>Multiple training options have been identified within your budget and are displayed below.</p></div>`;
+                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p><strong>Multiple training options have been identified within your specified criteria.</strong> The courses below are from reputable providers with detailed information about costs, duration, and certification outcomes.</p></div>`;
             }
         }
 
         function parseCourses(content) {
             const courses = [];
             
-            // Look for table format that was working before
-            const tableRows = content.split('\n').filter(line => 
-                line.includes('|') && 
-                !line.includes('---') && 
-                !line.includes('Provider & Course Name') &&
-                line.split('|').length >= 5
-            );
+            // Look for table format in the content
+            const lines = content.split('\n');
+            let inTable = false;
             
-            console.log('Found table rows:', tableRows.length);
-            
-            if (tableRows.length > 0) {
-                tableRows.forEach((row, index) => {
-                    const columns = row.split('|').map(col => col.trim());
-                    console.log(`Row ${index}:`, columns);
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Start of table
+                if (line.includes('| Provider') && line.includes('| Cost') && line.includes('| Duration')) {
+                    inTable = true;
+                    continue;
+                }
+                
+                // Skip table separator line
+                if (line.includes('|---') || line.includes('|---------')) {
+                    continue;
+                }
+                
+                // End of table
+                if (inTable && (!line.includes('|') || line.includes('**Details and Contact'))) {
+                    break;
+                }
+                
+                // Parse table rows
+                if (inTable && line.includes('|')) {
+                    const columns = line.split('|').map(col => col.trim());
                     
-                    if (columns.length >= 5 && columns[1] && columns[1].length > 3) {
+                    if (columns.length >= 6 && columns[1] && columns[1].length > 3) {
+                        // Extract course name and provider from first column
+                        let providerAndCourse = columns[1].replace(/\*\*/g, '').trim();
+                        let courseName = providerAndCourse;
+                        let provider = providerAndCourse;
+                        
+                        // Try to separate provider from course name
+                        if (providerAndCourse.includes('**')) {
+                            const parts = providerAndCourse.split('**');
+                            if (parts.length >= 2) {
+                                provider = parts[0].trim();
+                                courseName = parts[1].trim();
+                            }
+                        } else if (providerAndCourse.includes(' - ')) {
+                            const parts = providerAndCourse.split(' - ');
+                            provider = parts[0].trim();
+                            courseName = parts[1] ? parts[1].trim() : parts[0].trim();
+                        } else if (providerAndCourse.includes(': ')) {
+                            const parts = providerAndCourse.split(': ');
+                            provider = parts[0].trim();
+                            courseName = parts[1] ? parts[1].trim() : parts[0].trim();
+                        }
+                        
                         const course = {
-                            name: columns[1].replace(/\*\*/g, '').trim(),
-                            provider: columns[1].split('–')[0].split(':')[0].replace(/\*\*/g, '').trim(),
-                            cost: columns[2].trim(),
-                            duration: columns[3].trim(),
-                            certification: columns[4].trim(),
-                            website: ''
+                            name: courseName,
+                            provider: provider,
+                            cost: columns[2] ? columns[2].trim() : 'Contact for pricing',
+                            duration: columns[3] ? columns[3].trim() : 'Varies',
+                            format: columns[4] ? columns[4].trim() : 'Online',
+                            certification: columns[5] ? columns[5].trim() : 'Certificate of Completion',
+                            website: columns[6] ? columns[6].trim() : ''
                         };
                         
                         courses.push(course);
                     }
-                });
+                }
             }
             
-            console.log('Parsed courses:', courses);
+            console.log('Parsed courses from table:', courses);
             return courses;
         }
 
@@ -553,6 +609,10 @@
                         <div class="detail-row">
                             <span class="detail-label">Duration:</span>
                             <span class="detail-value">${course.duration || 'Varies'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Format:</span>
+                            <span class="detail-value">${course.format || 'Online'}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Certification:</span>
