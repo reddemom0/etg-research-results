@@ -1,35 +1,577 @@
-function formatSummary(content) {
-    // Look for actual research content about the topic
-    const lines = content.split('\n');
-    
-    // Find lines that mention the actual research topic (not generic text)
-    const topicLines = lines.filter(line => {
-        const lowerLine = line.toLowerCase();
-        return line.length > 40 && 
-               (lowerLine.includes('data analytics') || 
-                lowerLine.includes('digital marketing') || 
-                lowerLine.includes('cybersecurity') ||
-                lowerLine.includes('training') ||
-                lowerLine.includes('courses')) &&
-               !lowerLine.includes('construction') &&
-               !lowerLine.includes('project management') &&
-               !lowerLine.includes('"status"') &&
-               !lowerLine.includes('research_data');
-    });
-    
-    // Use the first relevant line we find
-    if (topicLines.length > 0) {
-        const summaryLine = topicLines[0].replace(/\*\*/g, '').trim();
-        return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">${summaryLine}</p>`;
-    }
-    
-    // Fallback based on the query
-    const queryText = document.getElementById('queryText').textContent.toLowerCase();
-    if (queryText.includes('data analytics')) {
-        return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully. Multiple data analytics training options for beginners have been identified within your budget and are displayed below.</p>`;
-    } else if (queryText.includes('digital marketing')) {
-        return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully. Multiple digital marketing training options have been identified within your budget and are displayed below.</p>`;
-    } else {
-        return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully. Multiple training options have been identified within your budget and are displayed below.</p>`;
-    }
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETG Research Results - Granted Consulting</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #1e3a8a;
+            padding-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #1e3a8a;
+            margin: 0;
+            font-size: 2.2em;
+            font-weight: 600;
+        }
+        
+        .header p {
+            color: #374151;
+            font-size: 1.1em;
+            margin: 10px 0 0 0;
+        }
+        
+        .query-display {
+            background: #f1f5f9;
+            border: 2px solid #1e3a8a;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .query-display h3 {
+            color: #1e3a8a;
+            margin: 0 0 10px 0;
+            font-size: 1.2em;
+        }
+        
+        .query-text {
+            font-size: 1.1em;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1e3a8a;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .results {
+            display: none;
+        }
+        
+        .summary-section {
+            background: #f8fafc;
+            border-left: 5px solid #1e3a8a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 10px 10px 0;
+        }
+        
+        .summary-section h3 {
+            color: #1e3a8a;
+            margin: 0 0 15px 0;
+        }
+        
+        .course-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .course-card {
+            background: #ffffff;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .course-card:hover {
+            border-color: #1e3a8a;
+            box-shadow: 0 8px 12px rgba(30,58,138,0.2);
+            transform: translateY(-2px);
+        }
+        
+        .course-title {
+            color: #1e3a8a;
+            font-size: 1.3em;
+            font-weight: 600;
+            margin: 0 0 10px 0;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 8px;
+        }
+        
+        .course-provider {
+            color: #374151;
+            font-weight: 500;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .course-details {
+            margin: 15px 0;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .detail-label {
+            font-weight: 600;
+            color: #1e3a8a;
+            min-width: 80px;
+        }
+        
+        .detail-value {
+            color: #374151;
+            text-align: right;
+            flex: 1;
+            margin-left: 10px;
+        }
+        
+        .cost-highlight {
+            background: #1e3a8a;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            display: inline-block;
+            margin: 10px 0;
+        }
+        
+        .certification-badge {
+            background: #10b981;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        
+        .actions {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border: 2px dashed #1e3a8a;
+        }
+        
+        .copy-btn {
+            background: #1e3a8a;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .copy-btn:hover {
+            background: #1e40af;
+            transform: translateY(-2px);
+        }
+        
+        .copy-btn:active {
+            transform: translateY(0);
+        }
+        
+        .success-message {
+            color: #10b981;
+            font-weight: bold;
+            margin: 10px 0;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .success-message.show {
+            opacity: 1;
+        }
+        
+        .error {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 5px solid #ef4444;
+        }
+        
+        .back-link {
+            text-align: center;
+            margin-top: 30px;
+        }
+        
+        .back-link a {
+            color: #1e3a8a;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            .course-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .detail-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .detail-value {
+                text-align: left;
+                margin-left: 0;
+                margin-top: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 ETG Research Results</h1>
+            <p>Powered by Granted Consulting</p>
+        </div>
+        
+        <div class="query-display">
+            <h3>Research Query:</h3>
+            <div class="query-text" id="queryText">Loading research query...</div>
+        </div>
+        
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <h3>Gathering research data...</h3>
+            <p>Please wait while we compile comprehensive training provider information from verified sources.</p>
+        </div>
+        
+        <div id="results" class="results">
+            <div class="summary-section">
+                <h3>📋 Research Summary</h3>
+                <div id="summaryContent"></div>
+            </div>
+            
+            <h3 style="color: #1e3a8a; margin: 30px 0 20px 0; font-size: 1.5em;">🎓 Training Provider Options</h3>
+            <div class="course-grid" id="courseGrid">
+                <!-- Course cards will be populated here -->
+            </div>
+            
+            <div class="actions">
+                <h4 style="color: #1e3a8a; margin: 0 0 15px 0;">📋 Copy Results for Assistant</h4>
+                <button class="copy-btn" onclick="copyFormattedResults()">📋 Copy Formatted Summary</button>
+                <button class="copy-btn" onclick="copyDetailedResults()">📄 Copy Detailed Results</button>
+                <button class="copy-btn" onclick="downloadResults()">💾 Download as Text File</button>
+                
+                <div id="successMessage" class="success-message">
+                    ✅ Results copied to clipboard!
+                </div>
+            </div>
+            
+            <div class="back-link">
+                <p><a href="javascript:history.back()">← Back to ETG Assistant</a></p>
+            </div>
+        </div>
+        
+        <div id="error" class="error" style="display: none;">
+            <h3>❌ Research Error</h3>
+            <p>There was an issue gathering research data. Please try again or contact support.</p>
+            <div class="back-link">
+                <a href="javascript:history.back()">← Back to try again</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let researchData = null;
+        let queryText = '';
+
+        // Get URL parameters
+        function getUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const query = urlParams.get('query');
+            
+            console.log('Query parameter:', query);
+            return { query };
+        }
+
+        // Make the research request via our Vercel API
+        async function fetchResearchData() {
+            const params = getUrlParams();
+            
+            if (!params.query) {
+                showError('Missing research query. Please use a valid research link from the ETG Assistant.');
+                return;
+            }
+
+            // Display the query
+            queryText = decodeURIComponent(params.query);
+            document.getElementById('queryText').textContent = queryText;
+
+            try {
+                console.log('Fetching research data via Vercel API...');
+                
+                // Call our Vercel API endpoint instead of Make.com directly
+                const response = await fetch(`/api/research?query=${encodeURIComponent(params.query)}`);
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('Received data from API:', data);
+                
+                researchData = data;
+                displayResults(data);
+                
+            } catch (error) {
+                console.error('Research error:', error);
+                showError(`Failed to fetch research data: ${error.message}`);
+            }
+        }
+
+        function displayResults(data) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+            
+            // Display summary
+            const summary = data.research_data?.content || 'Research completed successfully.';
+            document.getElementById('summaryContent').innerHTML = formatSummary(summary);
+            
+            // Parse and display courses
+            const courses = parseCourses(summary);
+            const courseGrid = document.getElementById('courseGrid');
+            
+            if (courses.length > 0) {
+                courseGrid.innerHTML = courses.map(course => createCourseCard(course)).join('');
+            } else {
+                courseGrid.innerHTML = '<p style="text-align: center; color: #6b7280; grid-column: 1 / -1;">No structured course data found. Please check the detailed results below.</p>';
+            }
+        }
+
+        function formatSummary(content) {
+            // Simple approach: if content is too long and looks like JSON, use a clean fallback
+            if (content.length > 500 && content.includes('"research_data"')) {
+                return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully. Multiple construction and project management training options have been identified within your budget and are displayed below.</p>`;
+            }
+            
+            // For normal content, look for first good sentence
+            const lines = content.split('\n').filter(line => line.trim().length > 30);
+            const summaryLine = lines.find(line => 
+                line.includes('courses') && 
+                (line.includes('available') || line.includes('suitable') || line.includes('training'))
+            );
+            
+            if (summaryLine) {
+                const cleanLine = summaryLine.replace(/\*\*/g, '').trim();
+                return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">${cleanLine}</p>`;
+            }
+            
+            // Fallback
+            return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully.</p>`;
+        }
+
+        function parseCourses(content) {
+            const courses = [];
+            
+            // Look for table format first (current format)
+            const tableRows = content.split('\n').filter(line => line.includes('|') && !line.includes('---') && !line.includes('Provider & Course Name'));
+            
+            if (tableRows.length > 0) {
+                tableRows.forEach(row => {
+                    const columns = row.split('|').map(col => col.trim());
+                    if (columns.length >= 6) {
+                        const course = {
+                            name: columns[1].replace(/\*\*/g, '').trim(),
+                            provider: columns[1].split('–')[0].replace(/\*\*/g, '').trim(),
+                            cost: columns[2].trim(),
+                            duration: columns[3].trim(),
+                            certification: columns[4].trim(),
+                            details: columns[5].trim(),
+                            website: columns[6] ? columns[6].trim() : 'Contact provider'
+                        };
+                        
+                        if (course.name && course.name !== '') {
+                            courses.push(course);
+                        }
+                    }
+                });
+            }
+            
+            // Fallback: Look for older **Course Name:** format
+            if (courses.length === 0) {
+                const courseMatches = content.match(/Course Name:\*\*(.*?)\*\*/g);
+                const providerMatches = content.match(/Provider:\*\*(.*?)\*\*/g);
+                const costMatches = content.match(/Cost:\*\*(.*?)\*\*/g);
+                const durationMatches = content.match(/Duration:\*\*(.*?)\*\*/g);
+                
+                if (courseMatches && providerMatches) {
+                    for (let i = 0; i < Math.min(courseMatches.length, providerMatches.length); i++) {
+                        const course = {
+                            name: courseMatches[i].replace(/Course Name:\*\*(.*?)\*\*/, '$1').trim(),
+                            provider: providerMatches[i].replace(/Provider:\*\*(.*?)\*\*/, '$1').trim(),
+                            cost: costMatches && costMatches[i] ? costMatches[i].replace(/Cost:\*\*(.*?)\*\*/, '$1').trim() : 'Contact for pricing',
+                            duration: durationMatches && durationMatches[i] ? durationMatches[i].replace(/Duration:\*\*(.*?)\*\*/, '$1').trim() : 'Varies',
+                            certification: 'Certificate of Completion'
+                        };
+                        courses.push(course);
+                    }
+                }
+            }
+            
+            return courses;
+        }
+
+        function createCourseCard(course) {
+            return `
+                <div class="course-card">
+                    <div class="course-title">${course.name}</div>
+                    <div class="course-provider">${course.provider}</div>
+                    <div class="course-details">
+                        <div class="detail-row">
+                            <span class="detail-label">Cost:</span>
+                            <span class="detail-value cost-highlight">${course.cost}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Duration:</span>
+                            <span class="detail-value">${course.duration}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Certification:</span>
+                            <span class="detail-value">
+                                <span class="certification-badge">${course.certification}</span>
+                            </span>
+                        </div>
+                        ${course.details ? `
+                        <div class="detail-row">
+                            <span class="detail-label">Details:</span>
+                            <span class="detail-value">${course.details.substring(0, 100)}...</span>
+                        </div>
+                        ` : ''}
+                        ${course.website && course.website !== 'Contact provider' ? `
+                        <div class="detail-row">
+                            <span class="detail-label">Website:</span>
+                            <span class="detail-value"><a href="${course.website}" target="_blank" style="color: #1e3a8a;">Visit Site</a></span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('error').innerHTML = `
+                <h3>❌ Research Error</h3>
+                <p>${message}</p>
+                <div class="back-link">
+                    <a href="javascript:history.back()">← Back to try again</a>
+                </div>
+            `;
+        }
+
+        function copyFormattedResults() {
+            const summary = document.getElementById('summaryContent').textContent;
+            const courses = Array.from(document.querySelectorAll('.course-card')).map(card => {
+                const title = card.querySelector('.course-title').textContent;
+                const provider = card.querySelector('.course-provider').textContent;
+                const details = Array.from(card.querySelectorAll('.detail-row')).map(row => {
+                    const label = row.querySelector('.detail-label').textContent;
+                    const value = row.querySelector('.detail-value').textContent;
+                    return `${label} ${value}`;
+                }).join(', ');
+                return `• ${title} (${provider}) - ${details}`;
+            }).join('\n');
+
+            const formattedText = `ETG Research Results\nQuery: ${queryText}\n\nSummary:\n${summary}\n\nTraining Options:\n${courses}`;
+            
+            copyToClipboard(formattedText);
+        }
+
+        function copyDetailedResults() {
+            const fullText = researchData ? JSON.stringify(researchData, null, 2) : 'No detailed data available';
+            copyToClipboard(fullText);
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const successMsg = document.getElementById('successMessage');
+                successMsg.classList.add('show');
+                setTimeout(() => {
+                    successMsg.classList.remove('show');
+                }, 3000);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+                alert('Failed to copy to clipboard. Please select and copy manually.');
+            });
+        }
+
+        function downloadResults() {
+            const summary = document.getElementById('summaryContent').textContent;
+            const courses = Array.from(document.querySelectorAll('.course-card')).map(card => {
+                const title = card.querySelector('.course-title').textContent;
+                const provider = card.querySelector('.course-provider').textContent;
+                return `${title} - ${provider}`;
+            }).join('\n');
+
+            const content = `ETG Research Results\n\nQuery: ${queryText}\n\nSummary:\n${summary}\n\nTraining Options:\n${courses}`;
+            
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'etg-research-results.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Start research when page loads
+        window.onload = function() {
+            fetchResearchData();
+        };
+    </script>
+</body>
+</html>
