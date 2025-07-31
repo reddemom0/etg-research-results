@@ -390,36 +390,71 @@
         }
 
         function formatSummary(content) {
-            // Extract the main summary paragraph
-            const lines = content.split('\n');
-            const summaryLine = lines.find(line => line.includes('online') && line.includes('courses') && line.includes('available'));
+            // Extract the main summary paragraph - look for the first substantial paragraph
+            const lines = content.split('\n').filter(line => line.trim().length > 50);
+            const summaryLine = lines.find(line => 
+                line.includes('courses') && 
+                (line.includes('available') || line.includes('training') || line.includes('providers'))
+            );
             
             if (summaryLine) {
-                return `<p style="font-size: 1.1em; line-height: 1.6;">${summaryLine}</p>`;
+                return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151;">${summaryLine.replace(/\*\*/g, '').trim()}</p>`;
             }
             
-            return `<p style="font-size: 1.1em; line-height: 1.6;">${content.substring(0, 300)}...</p>`;
+            // Fallback: use first substantial line
+            const firstLine = lines[0];
+            if (firstLine) {
+                return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151;">${firstLine.replace(/\*\*/g, '').trim()}</p>`;
+            }
+            
+            return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151;">Research completed successfully.</p>`;
         }
 
         function parseCourses(content) {
             const courses = [];
             
-            // Look for course patterns in the content
-            const courseMatches = content.match(/Course Name:\*\*(.*?)\*\*/g);
-            const providerMatches = content.match(/Provider:\*\*(.*?)\*\*/g);
-            const costMatches = content.match(/Cost:\*\*(.*?)\*\*/g);
-            const durationMatches = content.match(/Duration:\*\*(.*?)\*\*/g);
+            // Look for table format first (current format)
+            const tableRows = content.split('\n').filter(line => line.includes('|') && !line.includes('---') && !line.includes('Provider & Course Name'));
             
-            if (courseMatches && providerMatches) {
-                for (let i = 0; i < Math.min(courseMatches.length, providerMatches.length); i++) {
-                    const course = {
-                        name: courseMatches[i].replace(/Course Name:\*\*(.*?)\*\*/, '$1').trim(),
-                        provider: providerMatches[i].replace(/Provider:\*\*(.*?)\*\*/, '$1').trim(),
-                        cost: costMatches && costMatches[i] ? costMatches[i].replace(/Cost:\*\*(.*?)\*\*/, '$1').trim() : 'Contact for pricing',
-                        duration: durationMatches && durationMatches[i] ? durationMatches[i].replace(/Duration:\*\*(.*?)\*\*/, '$1').trim() : 'Varies',
-                        certification: 'Certificate of Completion'
-                    };
-                    courses.push(course);
+            if (tableRows.length > 0) {
+                tableRows.forEach(row => {
+                    const columns = row.split('|').map(col => col.trim());
+                    if (columns.length >= 6) {
+                        const course = {
+                            name: columns[1].replace(/\*\*/g, '').trim(),
+                            provider: columns[1].split('–')[0].replace(/\*\*/g, '').trim(),
+                            cost: columns[2].trim(),
+                            duration: columns[3].trim(),
+                            certification: columns[4].trim(),
+                            details: columns[5].trim(),
+                            website: columns[6] ? columns[6].trim() : 'Contact provider'
+                        };
+                        
+                        if (course.name && course.name !== '') {
+                            courses.push(course);
+                        }
+                    }
+                });
+            }
+            
+            // Fallback: Look for older **Course Name:** format
+            if (courses.length === 0) {
+                const courseMatches = content.match(/Course Name:\*\*(.*?)\*\*/g);
+                const providerMatches = content.match(/Provider:\*\*(.*?)\*\*/g);
+                const costMatches = content.match(/Cost:\*\*(.*?)\*\*/g);
+                const durationMatches = content.match(/Duration:\*\*(.*?)\*\*/g);
+                
+                if (courseMatches && providerMatches) {
+                    for (let i = 0; i < Math.min(courseMatches.length, providerMatches.length); i++) {
+                        const course = {
+                            name: courseMatches[i].replace(/Course Name:\*\*(.*?)\*\*/, '$1').trim(),
+                            provider: providerMatches[i].replace(/Provider:\*\*(.*?)\*\*/, '$1').trim(),
+                            cost: costMatches && costMatches[i] ? costMatches[i].replace(/Cost:\*\*(.*?)\*\*/, '$1').trim() : 'Contact for pricing',
+                            duration: durationMatches && durationMatches[i] ? durationMatches[i].replace(/Duration:\*\*(.*?)\*\*/, '$1').trim() : 'Varies',
+                            certification: 'Certificate of Completion'
+                        };
+                        courses.push(course);
+                    }
                 }
             }
             
@@ -446,6 +481,18 @@
                                 <span class="certification-badge">${course.certification}</span>
                             </span>
                         </div>
+                        ${course.details ? `
+                        <div class="detail-row">
+                            <span class="detail-label">Details:</span>
+                            <span class="detail-value">${course.details.substring(0, 100)}...</span>
+                        </div>
+                        ` : ''}
+                        ${course.website && course.website !== 'Contact provider' ? `
+                        <div class="detail-row">
+                            <span class="detail-label">Website:</span>
+                            <span class="detail-value"><a href="${course.website}" target="_blank" style="color: #1e3a8a;">Visit Site</a></span>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
             `;
