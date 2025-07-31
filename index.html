@@ -390,119 +390,110 @@
         }
 
         function formatSummary(content) {
-            // Extract meaningful summary content from the research data
-            let summaryContent = '';
-            
-            // Look for the actual research content, not just a generic message
-            if (content.includes('available for under') || content.includes('suitable for')) {
-                // Find content between opening and table/course details
-                const lines = content.split('\n');
-                let summaryLines = [];
-                let foundStart = false;
-                
-                for (let line of lines) {
-                    const cleanLine = line.trim();
-                    
-                    // Start capturing after we find the main opening line
-                    if (cleanLine.includes('available') && (cleanLine.includes('for under') || cleanLine.includes('suitable for'))) {
-                        foundStart = true;
-                        summaryLines.push(cleanLine);
-                        continue;
-                    }
-                    
-                    // Keep capturing until we hit a table or numbered list
-                    if (foundStart) {
-                        if (cleanLine.includes('|') || cleanLine.includes('---') || cleanLine.includes('### 1.')) {
-                            break;
-                        }
-                        if (cleanLine.length > 20 && !cleanLine.startsWith('#')) {
-                            summaryLines.push(cleanLine);
-                        }
-                    }
-                }
-                
-                if (summaryLines.length > 0) {
-                    summaryContent = summaryLines.join(' ').replace(/\*\*/g, '').trim();
-                }
+            // Simple approach: if content is too long and looks like JSON, use a clean fallback
+            if (content.length > 500 && content.includes('"research_data"')) {
+                return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully. Multiple construction and project management training options have been identified within your budget and are displayed below.</p>`;
             }
             
-            // Fallback: look for content with course/training mentions
-            if (!summaryContent && content.length > 100) {
-                const sentences = content.split('.').filter(s => s.length > 30);
-                const relevantSentences = sentences.filter(s => 
-                    s.includes('course') || s.includes('training') || s.includes('certificate')
-                ).slice(0, 3);
-                
-                if (relevantSentences.length > 0) {
-                    summaryContent = relevantSentences.join('. ').replace(/\*\*/g, '').trim() + '.';
-                }
+            // For normal content, look for first good sentence
+            const lines = content.split('\n').filter(line => line.trim().length > 30);
+            const summaryLine = lines.find(line => 
+                line.includes('courses') && 
+                (line.includes('available') || line.includes('suitable') || line.includes('training'))
+            );
+            
+            if (summaryLine) {
+                const cleanLine = summaryLine.replace(/\*\*/g, '').trim();
+                return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">${cleanLine}</p>`;
             }
             
-            // Ultimate fallback
-            if (!summaryContent) {
-                summaryContent = "Research completed successfully. Multiple training options have been identified within your budget and are displayed below.";
-            }
-            
-            return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">${summaryContent}</div>`;
+            // Fallback
+            return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully.</p>`;
         }
 
         function parseCourses(content) {
             const courses = [];
             
-            // SAFE: Look for table format that was working before
-            const tableRows = content.split('\n').filter(line => 
-                line.includes('|') && 
-                !line.includes('---') && 
-                !line.includes('Provider & Course Name') &&
-                line.split('|').length >= 5
-            );
-            
-            console.log('Found table rows:', tableRows.length);
+            // Look for table format first (current format)
+            const tableRows = content.split('\n').filter(line => line.includes('|') && !line.includes('---') && !line.includes('Provider & Course Name'));
             
             if (tableRows.length > 0) {
-                tableRows.forEach((row, index) => {
+                tableRows.forEach(row => {
                     const columns = row.split('|').map(col => col.trim());
-                    console.log(`Row ${index}:`, columns);
-                    
-                    if (columns.length >= 5 && columns[1] && columns[1].length > 3) {
+                    if (columns.length >= 6) {
                         const course = {
                             name: columns[1].replace(/\*\*/g, '').trim(),
-                            provider: columns[1].split('–')[0].split(':')[0].replace(/\*\*/g, '').trim(),
+                            provider: columns[1].split('–')[0].replace(/\*\*/g, '').trim(),
                             cost: columns[2].trim(),
                             duration: columns[3].trim(),
                             certification: columns[4].trim(),
-                            website: '' // We'll fix URLs later once basic parsing works
+                            details: columns[5].trim(),
+                            website: columns[6] ? columns[6].trim() : 'Contact provider'
                         };
                         
-                        courses.push(course);
+                        if (course.name && course.name !== '') {
+                            courses.push(course);
+                        }
                     }
                 });
             }
             
-            console.log('Parsed courses:', courses);
+            // Fallback: Look for older **Course Name:** format
+            if (courses.length === 0) {
+                const courseMatches = content.match(/Course Name:\*\*(.*?)\*\*/g);
+                const providerMatches = content.match(/Provider:\*\*(.*?)\*\*/g);
+                const costMatches = content.match(/Cost:\*\*(.*?)\*\*/g);
+                const durationMatches = content.match(/Duration:\*\*(.*?)\*\*/g);
+                
+                if (courseMatches && providerMatches) {
+                    for (let i = 0; i < Math.min(courseMatches.length, providerMatches.length); i++) {
+                        const course = {
+                            name: courseMatches[i].replace(/Course Name:\*\*(.*?)\*\*/, '$1').trim(),
+                            provider: providerMatches[i].replace(/Provider:\*\*(.*?)\*\*/, '$1').trim(),
+                            cost: costMatches && costMatches[i] ? costMatches[i].replace(/Cost:\*\*(.*?)\*\*/, '$1').trim() : 'Contact for pricing',
+                            duration: durationMatches && durationMatches[i] ? durationMatches[i].replace(/Duration:\*\*(.*?)\*\*/, '$1').trim() : 'Varies',
+                            certification: 'Certificate of Completion'
+                        };
+                        courses.push(course);
+                    }
+                }
+            }
+            
             return courses;
         }
 
         function createCourseCard(course) {
             return `
                 <div class="course-card">
-                    <div class="course-title">${course.name || 'Course Name'}</div>
-                    <div class="course-provider">${course.provider || 'Provider'}</div>
+                    <div class="course-title">${course.name}</div>
+                    <div class="course-provider">${course.provider}</div>
                     <div class="course-details">
                         <div class="detail-row">
                             <span class="detail-label">Cost:</span>
-                            <span class="detail-value cost-highlight">${course.cost || 'Contact for pricing'}</span>
+                            <span class="detail-value cost-highlight">${course.cost}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Duration:</span>
-                            <span class="detail-value">${course.duration || 'Varies'}</span>
+                            <span class="detail-value">${course.duration}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Certification:</span>
                             <span class="detail-value">
-                                <span class="certification-badge">${course.certification || 'Certificate of Completion'}</span>
+                                <span class="certification-badge">${course.certification}</span>
                             </span>
                         </div>
+                        ${course.details ? `
+                        <div class="detail-row">
+                            <span class="detail-label">Details:</span>
+                            <span class="detail-value">${course.details.substring(0, 100)}...</span>
+                        </div>
+                        ` : ''}
+                        ${course.website && course.website !== 'Contact provider' ? `
+                        <div class="detail-row">
+                            <span class="detail-label">Website:</span>
+                            <span class="detail-value"><a href="${course.website}" target="_blank" style="color: #1e3a8a;">Visit Site</a></span>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
             `;
