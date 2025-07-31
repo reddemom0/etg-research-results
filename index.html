@@ -390,25 +390,60 @@
         }
 
         function formatSummary(content) {
-            // Simple approach: if content is too long and looks like JSON, use a clean fallback
-            if (content.length > 500 && content.includes('"research_data"')) {
-                return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully. Multiple construction and project management training options have been identified within your budget and are displayed below.</p>`;
+            // Extract meaningful summary content from the research data
+            let summaryContent = '';
+            
+            // Look for the actual research content, not just a generic message
+            if (content.includes('available for under') || content.includes('suitable for')) {
+                // Find content between opening and table/course details
+                const lines = content.split('\n');
+                let summaryLines = [];
+                let foundStart = false;
+                
+                for (let line of lines) {
+                    const cleanLine = line.trim();
+                    
+                    // Start capturing after we find the main opening line
+                    if (cleanLine.includes('available') && (cleanLine.includes('for under') || cleanLine.includes('suitable for'))) {
+                        foundStart = true;
+                        summaryLines.push(cleanLine);
+                        continue;
+                    }
+                    
+                    // Keep capturing until we hit a table or numbered list
+                    if (foundStart) {
+                        if (cleanLine.includes('|') || cleanLine.includes('---') || cleanLine.includes('### 1.')) {
+                            break;
+                        }
+                        if (cleanLine.length > 20 && !cleanLine.startsWith('#')) {
+                            summaryLines.push(cleanLine);
+                        }
+                    }
+                }
+                
+                if (summaryLines.length > 0) {
+                    summaryContent = summaryLines.join(' ').replace(/\*\*/g, '').trim();
+                }
             }
             
-            // For normal content, look for first good sentence
-            const lines = content.split('\n').filter(line => line.trim().length > 30);
-            const summaryLine = lines.find(line => 
-                line.includes('courses') && 
-                (line.includes('available') || line.includes('suitable') || line.includes('training'))
-            );
-            
-            if (summaryLine) {
-                const cleanLine = summaryLine.replace(/\*\*/g, '').trim();
-                return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">${cleanLine}</p>`;
+            // Fallback: look for content with course/training mentions
+            if (!summaryContent && content.length > 100) {
+                const sentences = content.split('.').filter(s => s.length > 30);
+                const relevantSentences = sentences.filter(s => 
+                    s.includes('course') || s.includes('training') || s.includes('certificate')
+                ).slice(0, 3);
+                
+                if (relevantSentences.length > 0) {
+                    summaryContent = relevantSentences.join('. ').replace(/\*\*/g, '').trim() + '.';
+                }
             }
             
-            // Fallback
-            return `<p style="font-size: 1.1em; line-height: 1.6; color: #374151; margin: 0;">Research completed successfully.</p>`;
+            // Ultimate fallback
+            if (!summaryContent) {
+                summaryContent = "Research completed successfully. Multiple training options have been identified within your budget and are displayed below.";
+            }
+            
+            return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">${summaryContent}</div>`;
         }
 
         function parseCourses(content) {
@@ -420,15 +455,25 @@
             if (tableRows.length > 0) {
                 tableRows.forEach(row => {
                     const columns = row.split('|').map(col => col.trim());
-                    if (columns.length >= 6) {
+                    if (columns.length >= 5) {
+                        // Extract URL from markdown link format [text](url)
+                        let websiteUrl = '';
+                        const websiteColumn = columns[columns.length - 1] || '';
+                        const urlMatch = websiteColumn.match(/\[(.*?)\]\((.*?)\)/);
+                        if (urlMatch && urlMatch[2]) {
+                            websiteUrl = urlMatch[2].trim();
+                            // Clean up URL - remove reference numbers like [2]
+                            websiteUrl = websiteUrl.replace(/\[\d+\]$/, '');
+                        }
+                        
                         const course = {
                             name: columns[1].replace(/\*\*/g, '').trim(),
                             provider: columns[1].split('–')[0].replace(/\*\*/g, '').trim(),
                             cost: columns[2].trim(),
                             duration: columns[3].trim(),
                             certification: columns[4].trim(),
-                            details: columns[5].trim(),
-                            website: columns[6] ? columns[6].trim() : 'Contact provider'
+                            details: columns[5] ? columns[5].trim() : '',
+                            website: websiteUrl || 'Contact provider'
                         };
                         
                         if (course.name && course.name !== '') {
@@ -437,6 +482,47 @@
                     }
                 });
             }
+            
+            // Also look for detailed course sections (### 1. Course Name format)
+            const detailedSections = content.split('###').slice(1);
+            detailedSections.forEach(section => {
+                const lines = section.split('\n').filter(l => l.trim());
+                if (lines.length > 3) {
+                    const titleLine = lines[0].trim();
+                    let websiteUrl = '';
+                    let courseName = titleLine.replace(/^\d+\.\s*/, '').trim();
+                    let provider = courseName.split(':')[0].trim();
+                    
+                    // Look for website URL in this section
+                    const websiteLine = lines.find(l => l.includes('Website:') || l.includes('website:'));
+                    if (websiteLine) {
+                        const urlMatch = websiteLine.match(/https?:\/\/[^\s\[\]]+/);
+                        if (urlMatch) {
+                            websiteUrl = urlMatch[0];
+                        }
+                    }
+                    
+                    // Extract other details
+                    const costLine = lines.find(l => l.includes('Cost:'));
+                    const durationLine = lines.find(l => l.includes('Duration:'));
+                    const certLine = lines.find(l => l.includes('Certification:'));
+                    
+                    const course = {
+                        name: courseName,
+                        provider: provider,
+                        cost: costLine ? costLine.replace(/.*Cost:\s*/, '').replace(/\[.*?\]/g, '').trim() : 'Contact for pricing',
+                        duration: durationLine ? durationLine.replace(/.*Duration:\s*/, '').trim() : 'Varies',
+                        certification: certLine ? certLine.replace(/.*Certification:\s*/, '').trim() : 'Certificate of Completion',
+                        website: websiteUrl
+                    };
+                    
+                    // Only add if we don't already have this course from table parsing
+                    const existing = courses.find(c => c.name.toLowerCase().includes(course.name.toLowerCase().substring(0, 20)));
+                    if (!existing && course.name.length > 5) {
+                        courses.push(course);
+                    }
+                }
+            });
             
             // Fallback: Look for older **Course Name:** format
             if (courses.length === 0) {
@@ -452,7 +538,8 @@
                             provider: providerMatches[i].replace(/Provider:\*\*(.*?)\*\*/, '$1').trim(),
                             cost: costMatches && costMatches[i] ? costMatches[i].replace(/Cost:\*\*(.*?)\*\*/, '$1').trim() : 'Contact for pricing',
                             duration: durationMatches && durationMatches[i] ? durationMatches[i].replace(/Duration:\*\*(.*?)\*\*/, '$1').trim() : 'Varies',
-                            certification: 'Certificate of Completion'
+                            certification: 'Certificate of Completion',
+                            website: ''
                         };
                         courses.push(course);
                     }
@@ -488,10 +575,10 @@
                             <span class="detail-value">${course.details.substring(0, 100)}...</span>
                         </div>
                         ` : ''}
-                        ${course.website && course.website !== 'Contact provider' ? `
+                        ${course.website && course.website !== 'Contact provider' && course.website.startsWith('http') ? `
                         <div class="detail-row">
                             <span class="detail-label">Website:</span>
-                            <span class="detail-value"><a href="${course.website}" target="_blank" style="color: #1e3a8a;">Visit Site</a></span>
+                            <span class="detail-value"><a href="${course.website}" target="_blank" rel="noopener noreferrer" style="color: #1e3a8a; text-decoration: underline;">Visit Site</a></span>
                         </div>
                         ` : ''}
                     </div>
