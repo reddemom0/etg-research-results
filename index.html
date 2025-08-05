@@ -448,151 +448,255 @@
         }
 
         function formatSummary(content) {
-            // Extract the introductory paragraph before the table
-            const lines = content.split('\n');
-            let summaryLines = [];
-            let foundStart = false;
+            console.log('formatSummary input:', content.substring(0, 200));
             
+            // Clean up raw JSON artifacts first
+            let cleanContent = content;
+            cleanContent = cleanContent.replace(/"research_data":\s*"/g, '');
+            cleanContent = cleanContent.replace(/"index":\d+,"finish_reason":"stop","message":\{"role":"assistant","content":"/g, '');
+            cleanContent = cleanContent.replace(/^\{|\}$/g, '');
+            cleanContent = cleanContent.replace(/\\n/g, '\n');
+            cleanContent = cleanContent.replace(/\\"/g, '"');
+            cleanContent = cleanContent.replace(/\\\\/g, '\\');
+            
+            console.log('Cleaned content:', cleanContent.substring(0, 500));
+            
+            // Split into lines
+            const lines = cleanContent.split('\n');
+            let formattedContent = '';
+            let introFound = false;
+            let intro = '';
+            let currentProvider = '';
+            let providerDetails = [];
+            let providerCount = 0;
+            
+            // Extract intro and organize provider information
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 
-                // Skip empty lines
-                if (!line) continue;
-                
-                // Start capturing when we find the opening sentence
-                if (!foundStart && line.includes('**') && 
-                    (line.toLowerCase().includes('training courses') || 
-                     line.toLowerCase().includes('available') ||
-                     line.toLowerCase().includes('several') ||
-                     line.toLowerCase().includes('multiple'))) {
-                    foundStart = true;
+                // Skip empty lines and JSON artifacts
+                if (!line || 
+                    line.includes('"status"') || 
+                    line.includes('research_data') || 
+                    line.includes('"index"') ||
+                    line.includes('finish_reason') ||
+                    line.startsWith('{') ||
+                    line.startsWith('}')) {
+                    continue;
                 }
                 
-                // Stop when we hit the table header
-                if (line.includes('| Provider') || 
-                    line.includes('|---------') ||
-                    line.includes('|---')) {
-                    break;
+                // Capture the intro paragraph
+                if (!introFound && (
+                    line.toLowerCase().includes('several') ||
+                    line.toLowerCase().includes('multiple') ||
+                    line.toLowerCase().includes('digital marketing') ||
+                    line.toLowerCase().includes('training courses')
+                )) {
+                    intro = line;
+                    introFound = true;
+                    continue;
                 }
                 
-                // Capture content lines
-                if (foundStart) {
-                    // Skip lines that are clearly table formatting
-                    if (!line.startsWith('|') && line.length > 10) {
-                        summaryLines.push(line);
+                // Look for provider sections (usually start with provider name followed by –)
+                if (line.includes('–') && !line.includes('Cost:') && !line.includes('Duration:') && !line.includes('Contact:')) {
+                    if (currentProvider && providerDetails.length > 0) {
+                        // Save previous provider
+                        formattedContent += formatProviderSection(currentProvider, providerDetails, ++providerCount);
+                        providerDetails = [];
                     }
+                    currentProvider = line;
+                } else if (currentProvider && line.length > 10) {
+                    // Collect details for current provider
+                    providerDetails.push(line);
                 }
             }
             
-            // Process the summary content
-            if (summaryLines.length > 0) {
-                let summary = summaryLines.join(' ').trim();
-                
-                // Clean up and format
-                summary = summary
-                    .replace(/\*\*/g, '<strong>')  // Convert markdown bold
-                    .replace(/\*([^*]+)\*/g, '<em>$1</em>')  // Convert markdown italic
-                    .replace(/\s+/g, ' ')  // Clean up extra spaces
-                    .trim();
-                
-                // If it's a very long single sentence, try to break it naturally
-                if (summary.length > 300 && summary.split('.').length > 2) {
-                    const sentences = summary.split('. ');
-                    if (sentences.length > 1) {
-                        summary = sentences.join('.</p><p>') + '.';
-                        summary = `<p>${summary}</p>`;
-                    } else {
-                        summary = `<p>${summary}</p>`;
-                    }
-                } else {
-                    summary = `<p>${summary}</p>`;
-                }
-                
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">${summary}</div>`;
+            // Add the last provider
+            if (currentProvider && providerDetails.length > 0) {
+                formattedContent += formatProviderSection(currentProvider, providerDetails, ++providerCount);
             }
             
-            // Enhanced fallback based on the query
+            // Build the final formatted response
+            let finalContent = '';
+            
+            // Add intro
+            if (intro) {
+                finalContent += intro.replace(/\*\*/g, '<strong>').replace(/\*\*/g, '</strong>') + '<br><br>';
+                finalContent += 'Here are some options with verified details:<br><br>';
+            }
+            
+            // Add formatted provider content
+            finalContent += formattedContent;
+            
+            // Add closing paragraph if we have content
+            if (formattedContent) {
+                finalContent += '<br>For budget options, always check directly with the provider for the most current pricing and possible scholarships or discounts.';
+            }
+            
+            if (finalContent) {
+                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">${finalContent}</div>`;
+            }
+            
+            // Fallback
             const queryLower = queryText.toLowerCase();
             if (queryLower.includes('digital marketing')) {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p><strong>Several digital marketing training courses under 1,500 CAD are available for small business owners in British Columbia</strong>, offering a range of formats, durations, and outcomes from certified, legitimate providers.</p></div>`;
-            } else if (queryLower.includes('cybersecurity')) {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p><strong>Several reputable providers offer online cybersecurity certification courses under 2,000 CAD in Canada</strong>, with options suitable for entry-level and career-transitioning professionals.</p></div>`;
-            } else if (queryLower.includes('data analytics')) {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p><strong>Multiple data analytics training options for beginners have been identified within your budget.</strong> These courses provide comprehensive coverage of data analysis techniques, tools, and methodologies.</p></div>`;
-            } else {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;"><p><strong>Multiple training options have been identified within your specified criteria.</strong> The courses below are from reputable providers with detailed information about costs, duration, and certification outcomes.</p></div>`;
+                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">Several digital marketing training courses in British Columbia are available for under 1,500 CAD, both online and in-person. Here are some options with verified details:<br><br>Multiple certified providers offer courses with various formats, durations, and outcomes. Check the course cards below for specific details.</div>`;
             }
+            
+            return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">Multiple training options have been identified within your specified criteria. Check the course cards below for detailed information.</div>`;
+        }
+
+        function formatProviderSection(providerLine, details, number) {
+            let formatted = `<strong>${number}. ${providerLine}</strong><br>`;
+            
+            let duration = '';
+            let fee = '';
+            let coverage = '';
+            let website = '';
+            let contact = '';
+            let otherDetails = [];
+            
+            // Parse details
+            details.forEach(detail => {
+                detail = detail.trim();
+                if (!detail) return;
+                
+                if (detail.toLowerCase().includes('duration:') || detail.toLowerCase().includes('months') || detail.toLowerCase().includes('weeks')) {
+                    duration = detail.replace(/Duration:\s*/i, '').replace(/^-\s*/, '');
+                } else if (detail.toLowerCase().includes('cost:') || detail.toLowerCase().includes('fee:') || detail.includes('CAD') || detail.includes('USD')) {
+                    fee = detail.replace(/(?:Cost|Fee):\s*/i, '').replace(/^-\s*/, '');
+                } else if (detail.toLowerCase().includes('coverage:') || detail.toLowerCase().includes('focus:') || detail.toLowerCase().includes('content:')) {
+                    coverage = detail.replace(/(?:Coverage|Focus|Content|Course Content):\s*/i, '').replace(/^-\s*/, '');
+                } else if (detail.toLowerCase().includes('website:') || detail.includes('http')) {
+                    website = detail.replace(/Website:\s*/i, '').replace(/^-\s*/, '');
+                } else if (detail.toLowerCase().includes('contact:') || detail.includes('@')) {
+                    contact = detail.replace(/Contact:\s*/i, '').replace(/^-\s*/, '');
+                } else if (detail.length > 10) {
+                    otherDetails.push(detail);
+                }
+            });
+            
+            // Format the details as bullet points
+            if (duration) formatted += `&nbsp;&nbsp;&nbsp;* Duration: ${duration}<br>`;
+            if (fee) formatted += `&nbsp;&nbsp;&nbsp;* Fee: ${fee}<br>`;
+            if (coverage) formatted += `&nbsp;&nbsp;&nbsp;* Coverage: ${coverage}<br>`;
+            if (website) formatted += `&nbsp;&nbsp;&nbsp;* Website: ${website}<br>`;
+            if (contact) formatted += `&nbsp;&nbsp;&nbsp;* Contact: ${contact}<br>`;
+            
+            // Add other details
+            otherDetails.forEach(detail => {
+                formatted += `&nbsp;&nbsp;&nbsp;* ${detail}<br>`;
+            });
+            
+            formatted += '<br>';
+            return formatted;
         }
 
         function parseCourses(content) {
             const courses = [];
+            console.log('parseCourses input length:', content.length);
             
-            // Look for table format in the content
-            const lines = content.split('\n');
-            let inTable = false;
+            // Clean up the content first
+            let cleanContent = content;
+            cleanContent = cleanContent.replace(/\\n/g, '\n');
+            cleanContent = cleanContent.replace(/\\"/g, '"');
             
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
+            // Split into sections by numbered items or provider names
+            const sections = cleanContent.split(/\n\n?\d+\.\s*/);
+            
+            console.log('Found sections:', sections.length);
+            
+            sections.forEach((section, index) => {
+                console.log(`Processing section ${index}:`, section.substring(0, 100));
                 
-                // Start of table
-                if (line.includes('| Provider') && line.includes('| Cost') && line.includes('| Duration')) {
-                    inTable = true;
-                    continue;
-                }
+                // Look for provider names and course details
+                const lines = section.split('\n');
+                let courseName = '';
+                let provider = '';
+                let cost = '';
+                let duration = '';
+                let format = '';
+                let certification = '';
+                let website = '';
                 
-                // Skip table separator line
-                if (line.includes('|---') || line.includes('|---------')) {
-                    continue;
-                }
-                
-                // End of table
-                if (inTable && (!line.includes('|') || line.includes('**Details and Contact'))) {
-                    break;
-                }
-                
-                // Parse table rows
-                if (inTable && line.includes('|')) {
-                    const columns = line.split('|').map(col => col.trim());
+                // Extract course information from the text
+                for (let line of lines) {
+                    line = line.trim();
                     
-                    if (columns.length >= 6 && columns[1] && columns[1].length > 3) {
-                        // Extract course name and provider from first column
-                        let providerAndCourse = columns[1].replace(/\*\*/g, '').trim();
-                        let courseName = providerAndCourse;
-                        let provider = providerAndCourse;
-                        
-                        // Try to separate provider from course name
-                        if (providerAndCourse.includes('**')) {
-                            const parts = providerAndCourse.split('**');
-                            if (parts.length >= 2) {
-                                provider = parts[0].trim();
-                                courseName = parts[1].trim();
-                            }
-                        } else if (providerAndCourse.includes(' - ')) {
-                            const parts = providerAndCourse.split(' - ');
-                            provider = parts[0].trim();
-                            courseName = parts[1] ? parts[1].trim() : parts[0].trim();
-                        } else if (providerAndCourse.includes(': ')) {
-                            const parts = providerAndCourse.split(': ');
-                            provider = parts[0].trim();
-                            courseName = parts[1] ? parts[1].trim() : parts[0].trim();
+                    // Provider and course name (usually first line or contains "–")
+                    if (!provider && line.includes('–') && !line.includes('Cost:') && !line.includes('Duration:')) {
+                        const parts = line.split('–');
+                        provider = parts[0].trim();
+                        courseName = parts[1] ? parts[1].trim() : provider;
+                    }
+                    
+                    // Cost information
+                    if (line.includes('Cost:') || line.includes('CAD') || line.includes('USD')) {
+                        const costMatch = line.match(/Cost:\s*([^\\n]+)/i) || 
+                                        line.match(/(\$?[\d,]+\s*(?:CAD|USD))/i) ||
+                                        line.match(/(under \d+\s*CAD)/i) ||
+                                        line.match(/(free|no cost)/i);
+                        if (costMatch) {
+                            cost = costMatch[1].trim();
                         }
-                        
-                        const course = {
-                            name: courseName,
-                            provider: provider,
-                            cost: columns[2] ? columns[2].trim() : 'Contact for pricing',
-                            duration: columns[3] ? columns[3].trim() : 'Varies',
-                            format: columns[4] ? columns[4].trim() : 'Online',
-                            certification: columns[5] ? columns[5].trim() : 'Certificate of Completion',
-                            website: columns[6] ? columns[6].trim() : ''
-                        };
-                        
-                        courses.push(course);
+                    }
+                    
+                    // Duration information
+                    if (line.includes('Duration:') || line.includes('weeks') || line.includes('months')) {
+                        const durationMatch = line.match(/Duration:\s*([^\\n]+)/i) ||
+                                            line.match(/(\d+\s*(?:weeks?|months?))/i);
+                        if (durationMatch) {
+                            duration = durationMatch[1].trim();
+                        }
+                    }
+                    
+                    // Format information
+                    if (line.includes('Format:') || line.includes('Online') || line.includes('in-person')) {
+                        const formatMatch = line.match(/Format:\s*([^\\n]+)/i) ||
+                                          line.match(/(Online|in-person|hybrid)/i);
+                        if (formatMatch) {
+                            format = formatMatch[1].trim();
+                        }
+                    }
+                    
+                    // Certification information
+                    if (line.includes('Certification:') || line.includes('Certificate') || line.includes('certification')) {
+                        const certMatch = line.match(/(?:Certification|Certificate):\s*([^\\n]+)/i) ||
+                                        line.match(/(Certificate of [^\\n]+)/i) ||
+                                        line.match(/(Advanced Certification[^\\n]+)/i);
+                        if (certMatch) {
+                            certification = certMatch[1].trim();
+                        }
+                    }
+                    
+                    // Website information
+                    if (line.includes('Website:') || line.includes('http')) {
+                        const websiteMatch = line.match(/Website:\s*([^\\n\s]+)/i) ||
+                                           line.match(/(https?:\/\/[^\s\\n]+)/i);
+                        if (websiteMatch) {
+                            website = websiteMatch[1].trim();
+                        }
                     }
                 }
-            }
+                
+                // If we found meaningful course data, add it
+                if (provider && provider.length > 2) {
+                    const course = {
+                        name: courseName || provider,
+                        provider: provider,
+                        cost: cost || 'Contact for pricing',
+                        duration: duration || 'Varies',
+                        format: format || 'Online',
+                        certification: certification || 'Certificate of Completion',
+                        website: website
+                    };
+                    
+                    courses.push(course);
+                    console.log('Added course:', course);
+                }
+            });
             
-            console.log('Parsed courses from table:', courses);
+            console.log('Total courses parsed:', courses.length);
             return courses;
         }
 
@@ -620,6 +724,10 @@
                                 <span class="certification-badge">${course.certification || 'Certificate of Completion'}</span>
                             </span>
                         </div>
+                        ${course.website ? `<div class="detail-row">
+                            <span class="detail-label">Website:</span>
+                            <span class="detail-value"><a href="${course.website}" target="_blank" style="color: #1e3a8a; text-decoration: none;">${course.website}</a></span>
+                        </div>` : ''}
                     </div>
                 </div>
             `;
