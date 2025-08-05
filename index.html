@@ -342,6 +342,13 @@
                                 .replace(/\\"/g, '"')
                                 .replace(/\\\\/g, '\\');
                             
+                            // Remove JSON wrapper garbage at the end
+                            extractedContent = extractedContent
+                                .replace(/"\s*},\s*"delta"\s*:\s*{.*?}\s*}\s*{\s*"role"\s*:\s*"assistant"\s*,\s*"content"\s*:\s*".*?$/s, '')
+                                .replace(/"\s*}\s*,\s*"delta".*$/s, '')
+                                .replace(/"\s*}\s*{.*$/s, '')
+                                .trim();
+                            
                             // Generic duplicate removal - split content in half and check for similarity
                             const contentLength = extractedContent.length;
                             const midPoint = Math.floor(contentLength / 2);
