@@ -303,34 +303,41 @@
             
             // Handle the specific structure from your webhook
             if (data.research_data) {
-                // If research_data is a string, parse it
-                if (typeof data.research_data === 'string') {
+                // Check if research_data is an object with a content property
+                if (data.research_data.content && typeof data.research_data.content === 'string') {
                     try {
-                        // First level of parsing
-                        const firstParse = JSON.parse(data.research_data);
-                        console.log('First parse result:', firstParse);
+                        // Parse the content string which contains the nested JSON
+                        const contentParsed = JSON.parse(data.research_data.content);
+                        console.log('Parsed content:', contentParsed);
                         
-                        // Look for message.content in the parsed result
-                        if (firstParse.message && firstParse.message.content) {
-                            console.log('Found content in message:', firstParse.message.content);
-                            return firstParse.message.content;
+                        // Now look for research_data in the parsed content
+                        if (contentParsed.research_data && typeof contentParsed.research_data === 'string') {
+                            const finalParsed = JSON.parse(contentParsed.research_data);
+                            console.log('Final parsed:', finalParsed);
+                            
+                            if (finalParsed.message && finalParsed.message.content) {
+                                console.log('Found final content:', finalParsed.message.content);
+                                return finalParsed.message.content;
+                            }
                         }
                         
-                        // If no message.content, return the whole parsed content
-                        return firstParse;
-                        
                     } catch (parseError) {
-                        console.log('JSON parse failed:', parseError);
-                        // If parsing fails, return the raw string
-                        return data.research_data;
+                        console.log('Parse error:', parseError);
+                        return data.research_data.content;
                     }
                 }
-                // If research_data is already an object
-                else if (typeof data.research_data === 'object') {
-                    if (data.research_data.message && data.research_data.message.content) {
-                        return data.research_data.message.content;
+                
+                // If research_data is a string, parse it
+                else if (typeof data.research_data === 'string') {
+                    try {
+                        const parsed = JSON.parse(data.research_data);
+                        if (parsed.message && parsed.message.content) {
+                            return parsed.message.content;
+                        }
+                        return parsed;
+                    } catch (e) {
+                        return data.research_data;
                     }
-                    return data.research_data.content || data.research_data;
                 }
             }
             
