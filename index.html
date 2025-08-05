@@ -209,10 +209,6 @@
             transform: translateY(-2px);
         }
         
-        .copy-btn:active {
-            transform: translateY(0);
-        }
-        
         .success-message {
             color: #10b981;
             font-weight: bold;
@@ -245,24 +241,9 @@
             font-weight: 500;
         }
         
-        .back-link a:hover {
-            text-decoration: underline;
-        }
-        
         @media (max-width: 768px) {
             .course-grid {
                 grid-template-columns: 1fr;
-            }
-            
-            .detail-row {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            
-            .detail-value {
-                text-align: left;
-                margin-left: 0;
-                margin-top: 5px;
             }
         }
     </style>
@@ -299,7 +280,6 @@
             <div class="actions">
                 <h4 style="color: #1e3a8a; margin: 0 0 15px 0;">📋 Copy Results for Assistant</h4>
                 <button class="copy-btn" onclick="copyFormattedResults()">📋 Copy Formatted Summary</button>
-                <button class="copy-btn" onclick="copyDetailedResults()">📄 Copy Detailed Results</button>
                 <button class="copy-btn" onclick="downloadResults()">💾 Download as Text File</button>
                 
                 <div id="successMessage" class="success-message">
@@ -325,95 +305,28 @@
         let researchData = null;
         let queryText = '';
 
-        // Get URL parameters
         function getUrlParams() {
-            const formattedText = `ETG Research Results\nQuery: ${queryText}\n\nSummary:\n${summary}\n\nTraining Options:\n${courses}`;
-            
-            copyToClipboard(formattedText);
+            const urlParams = new URLSearchParams(window.location.search);
+            return { query: urlParams.get('query') };
         }
 
-        function copyDetailedResults() {
-            const fullText = researchData ? JSON.stringify(researchData, null, 2) : 'No detailed data available';
-            copyToClipboard(fullText);
-        }
-
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                const successMsg = document.getElementById('successMessage');
-                successMsg.classList.add('show');
-                setTimeout(() => {
-                    successMsg.classList.remove('show');
-                }, 3000);
-            }).catch(err => {
-                console.error('Failed to copy text: ', err);
-                alert('Failed to copy to clipboard. Please select and copy manually.');
-            });
-        }
-
-        function downloadResults() {
-            const summary = document.getElementById('summaryContent').textContent;
-            const courses = Array.from(document.querySelectorAll('.course-card')).map(card => {
-                const title = card.querySelector('.course-title').textContent;
-                const provider = card.querySelector('.course-provider').textContent;
-                return `${title} - ${provider}`;
-            }).join('\n');
-
-            const content = `ETG Research Results\n\nQuery: ${queryText}\n\nSummary:\n${summary}\n\nTraining Options:\n${courses}`;
-            
-            const blob = new Blob([content], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'etg-research-results.txt';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }
-
-        // Start research when page loads
-        window.onload = function() {
-            fetchResearchData();
-        };
-    </script>
-</body>
-</html> urlParams = new URLSearchParams(window.location.search);
-            const query = urlParams.get('query');
-            
-            console.log('Query parameter:', query);
-            return { query };
-        }
-
-        // Make the research request via our Vercel API
         async function fetchResearchData() {
             const params = getUrlParams();
-            
             if (!params.query) {
                 showError('Missing research query. Please use a valid research link from the ETG Assistant.');
                 return;
             }
 
-            // Display the query
             queryText = decodeURIComponent(params.query);
             document.getElementById('queryText').textContent = queryText;
 
             try {
-                console.log('Fetching research data via Vercel API...');
-                
-                // Call our Vercel API endpoint instead of Make.com directly
                 const response = await fetch(`/api/research?query=${encodeURIComponent(params.query)}`);
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                console.log('Received data from API:', data);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 
+                const data = await response.json();
                 researchData = data;
                 displayResults(data);
-                
             } catch (error) {
                 console.error('Research error:', error);
                 showError(`Failed to fetch research data: ${error.message}`);
@@ -424,405 +337,125 @@
             document.getElementById('loading').style.display = 'none';
             document.getElementById('results').style.display = 'block';
             
-            // Handle the complex nested JSON structure from Make.com
-            let content = '';
-            console.log('Raw data structure:', data);
-            
-            if (data.research_data && data.research_data.content) {
-                try {
-                    // First level: Parse the content string which contains JSON
-                    const firstLevel = JSON.parse(data.research_data.content);
-                    console.log('First level parsed:', firstLevel);
-                    
-                    if (firstLevel.research_data) {
-                        try {
-                            // Second level: Parse the research_data string which contains another JSON
-                            const secondLevel = JSON.parse(firstLevel.research_data);
-                            console.log('Second level parsed:', secondLevel);
-                            
-                            if (secondLevel.message && secondLevel.message.content) {
-                                // This is where the actual content is!
-                                content = secondLevel.message.content;
-                            } else if (secondLevel.content) {
-                                content = secondLevel.content;
-                            } else {
-                                // Fallback to the raw second level
-                                content = JSON.stringify(secondLevel);
-                            }
-                        } catch (e) {
-                            console.log('Second level parsing failed, using first level research_data as string');
-                            content = firstLevel.research_data;
-                        }
-                    } else if (firstLevel.content) {
-                        content = firstLevel.content;
-                    } else {
-                        content = JSON.stringify(firstLevel);
-                    }
-                } catch (e) {
-                    console.log('First level parsing failed, using raw content');
-                    content = data.research_data.content;
-                }
-            } else if (data.research_data) {
-                // Direct research_data without content wrapper
-                if (typeof data.research_data === 'string') {
-                    try {
-                        const parsed = JSON.parse(data.research_data);
-                        content = parsed.message?.content || parsed.content || data.research_data;
-                    } catch (e) {
-                        content = data.research_data;
-                    }
-                } else {
-                    content = data.research_data.content || JSON.stringify(data.research_data);
-                }
-            } else {
-                content = data.content || JSON.stringify(data);
-            }
-            
-            console.log('Final extracted content (first 500 chars):', content.substring(0, 500));
-            console.log('Full extracted content length:', content.length);
-            
-            // Display summary
+            let content = extractContent(data);
             document.getElementById('summaryContent').innerHTML = formatSummary(content);
             
-            // Parse and display courses
             const courses = parseCourses(content);
             const courseGrid = document.getElementById('courseGrid');
-            
-            console.log('Parsed courses:', courses);
             
             if (courses.length > 0) {
                 courseGrid.innerHTML = courses.map(course => createCourseCard(course)).join('');
             } else {
-                courseGrid.innerHTML = '<p style="text-align: center; color: #6b7280; grid-column: 1 / -1;">No structured course data found. Check the console for debugging info.</p>';
+                courseGrid.innerHTML = '<p style="text-align: center; color: #6b7280; grid-column: 1 / -1;">No course data found.</p>';
             }
         }
 
+        function extractContent(data) {
+            // Simple content extraction - try multiple paths
+            if (data.research_data?.content) {
+                try {
+                    const parsed = JSON.parse(data.research_data.content);
+                    if (parsed.research_data) {
+                        const inner = JSON.parse(parsed.research_data);
+                        return inner.message?.content || inner.content || parsed.research_data;
+                    }
+                    return parsed.content || JSON.stringify(parsed);
+                } catch (e) {
+                    return data.research_data.content;
+                }
+            }
+            return JSON.stringify(data);
+        }
+
         function formatSummary(content) {
-            console.log('formatSummary input:', content.substring(0, 300));
+            // Clean up content
+            content = content.replace(/\\n/g, '\n').replace(/\\"/g, '"');
             
-            // Clean up raw JSON artifacts first
-            let cleanContent = content;
-            cleanContent = cleanContent.replace(/"research_data":\s*"/g, '');
-            cleanContent = cleanContent.replace(/"index":\d+,"finish_reason":"stop","message":\{"role":"assistant","content":"/g, '');
-            cleanContent = cleanContent.replace(/^\{|\}$/g, '');
-            cleanContent = cleanContent.replace(/\\n/g, '\n');
-            cleanContent = cleanContent.replace(/\\"/g, '"');
-            cleanContent = cleanContent.replace(/\\\\/g, '\\');
-            
-            console.log('Cleaned content first 500 chars:', cleanContent.substring(0, 500));
-            
-            // Split into lines and find all providers
-            const lines = cleanContent.split('\n');
-            let providers = [];
-            let currentProvider = null;
-            let summaryIntro = '';
-            
-            // First pass: extract intro and find all providers
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-                
-                // Skip empty lines and JSON artifacts
-                if (!line || 
-                    line.includes('"status"') || 
-                    line.includes('research_data') || 
-                    line.includes('"index"') ||
-                    line.includes('finish_reason') ||
-                    line.startsWith('{') ||
-                    line.startsWith('}')) {
-                    continue;
-                }
-                
-                // Capture summary intro (first substantial paragraph)
-                if (!summaryIntro && line.length > 50 && 
-                    (line.toLowerCase().includes('digital marketing') ||
-                     line.toLowerCase().includes('training') ||
-                     line.toLowerCase().includes('courses'))) {
-                    summaryIntro = line;
-                    continue;
-                }
-                
-                // Look for provider names (usually have college/university/institute names)
-                if ((line.toLowerCase().includes('college') || 
-                     line.toLowerCase().includes('university') || 
-                     line.toLowerCase().includes('institute') ||
-                     line.toLowerCase().includes('academy')) &&
-                    !line.includes('Contact:') &&
-                    !line.includes('Website:') &&
-                    line.length > 10) {
-                    
-                    // Start new provider
-                    if (currentProvider) {
-                        providers.push(currentProvider);
-                    }
-                    
-                    currentProvider = {
-                        name: line,
-                        details: []
-                    };
-                } else if (currentProvider && line.length > 20) {
-                    // Add details to current provider
-                    currentProvider.details.push(line);
+            // Find first meaningful paragraph
+            const lines = content.split('\n');
+            let intro = '';
+            for (let line of lines) {
+                line = line.trim();
+                if (line.length > 50 && (line.includes('digital marketing') || line.includes('training'))) {
+                    intro = line;
+                    break;
                 }
             }
             
-            // Add the last provider
-            if (currentProvider) {
-                providers.push(currentProvider);
+            if (!intro) {
+                intro = 'Several digital marketing training courses in British Columbia are available for under 1,500 CAD, both online and in-person.';
             }
             
-            console.log('Found providers:', providers.length);
-            providers.forEach((p, i) => console.log(`Provider ${i}:`, p.name.substring(0, 50)));
-            
-            // Build the summary
-            let finalContent = '';
-            
-            // Create a proper intro summary
-            if (summaryIntro) {
-                finalContent += summaryIntro.replace(/\*\*/g, '<strong>').replace(/\*\*/g, '</strong>');
-            } else {
-                finalContent += 'Several digital marketing training courses in British Columbia are available for under 1,500 CAD, both online and in-person.';
-            }
-            
-            finalContent += '<br><br>Here are some options with verified details:<br><br>';
-            
-            // Add numbered providers (limit to avoid duplicates)
-            const uniqueProviders = [];
-            const seenNames = new Set();
-            
-            providers.forEach(provider => {
-                const providerKey = provider.name.toLowerCase().substring(0, 30);
-                if (!seenNames.has(providerKey) && uniqueProviders.length < 5) {
-                    seenNames.add(providerKey);
-                    uniqueProviders.push(provider);
-                }
-            });
-            
-            uniqueProviders.forEach((provider, index) => {
-                finalContent += `<strong>${index + 1}. ${provider.name}</strong><br>`;
-                
-                // Process provider details
-                let duration = '';
-                let fee = '';
-                let coverage = '';
-                let website = '';
-                let contact = '';
-                
-                provider.details.forEach(detail => {
-                    if (detail.toLowerCase().includes('duration') || detail.includes('weeks') || detail.includes('months')) {
-                        if (!duration) duration = detail;
-                    } else if (detail.includes('CAD') || detail.includes('USD') || detail.toLowerCase().includes('fee') || detail.toLowerCase().includes('cost')) {
-                        if (!fee) fee = detail;
-                    } else if (detail.toLowerCase().includes('covers') || detail.toLowerCase().includes('topics') || detail.toLowerCase().includes('seo')) {
-                        if (!coverage) coverage = detail;
-                    } else if (detail.includes('http') || detail.toLowerCase().includes('website')) {
-                        if (!website) website = detail;
-                    } else if (detail.includes('@') || detail.toLowerCase().includes('contact')) {
-                        if (!contact) contact = detail;
-                    }
-                });
-                
-                // Format details as bullet points
-                if (duration) finalContent += `&nbsp;&nbsp;&nbsp;* Duration: ${duration}<br>`;
-                if (fee) finalContent += `&nbsp;&nbsp;&nbsp;* Fee: ${fee}<br>`;
-                if (coverage) finalContent += `&nbsp;&nbsp;&nbsp;* Coverage: ${coverage}<br>`;
-                if (website) finalContent += `&nbsp;&nbsp;&nbsp;* Website: ${website}<br>`;
-                if (contact) finalContent += `&nbsp;&nbsp;&nbsp;* Contact: ${contact}<br>`;
-                
-                finalContent += '<br>';
-            });
-            
-            // Add closing
-            finalContent += 'Always check directly with the provider for the most current pricing and possible scholarships or discounts.';
-            
-            if (finalContent.includes('1.')) {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">${finalContent}</div>`;
-            }
-            
-            // Fallback if no providers found
-            const queryLower = queryText.toLowerCase();
-            if (queryLower.includes('digital marketing')) {
-                return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">Several digital marketing training courses in British Columbia are available for under 1,500 CAD, both online and in-person.<br><br>Multiple certified providers offer courses with various formats, durations, and outcomes. Check the course cards below for specific details.</div>`;
-            }
-            
-            return `<div style="font-size: 1.1em; line-height: 1.6; color: #374151;">Multiple training options have been identified within your specified criteria. Check the course cards below for detailed information.</div>`;
+            return `<p style="font-size: 1.1em; line-height: 1.6;">${intro.replace(/\*\*/g, '<strong>').replace(/\*\*/g, '</strong>')}</p>`;
         }
 
         function parseCourses(content) {
             const courses = [];
-            console.log('parseCourses input length:', content.length);
+            content = content.replace(/\\n/g, '\n').replace(/\\"/g, '"');
             
-            // Clean up the content first
-            let cleanContent = content;
-            cleanContent = cleanContent.replace(/\\n/g, '\n');
-            cleanContent = cleanContent.replace(/\\"/g, '"');
-            cleanContent = cleanContent.replace(/\\\\/g, '\\');
-            
-            // Split into lines and find provider sections
-            const lines = cleanContent.split('\n');
+            // Look for course providers
+            const lines = content.split('\n');
             let currentCourse = null;
             
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) continue;
                 
-                // Skip empty lines and JSON artifacts
-                if (!line || 
-                    line.includes('"status"') || 
-                    line.includes('research_data') || 
-                    line.includes('"index"') ||
-                    line.includes('finish_reason') ||
-                    line.startsWith('{') ||
-                    line.startsWith('}')) {
-                    continue;
-                }
-                
-                // Look for provider/course names (institutions offering courses)
-                if ((line.toLowerCase().includes('college') || 
-                     line.toLowerCase().includes('university') || 
-                     line.toLowerCase().includes('institute') ||
-                     line.toLowerCase().includes('academy') ||
-                     line.toLowerCase().includes('school')) &&
-                    !line.includes('Contact:') &&
-                    !line.includes('Website:') &&
-                    line.length > 15) {
+                // Find provider names
+                if ((line.includes('College') || line.includes('University') || line.includes('Institute')) 
+                    && !line.includes('Contact') && line.length > 15) {
                     
-                    // Save previous course if exists
-                    if (currentCourse && currentCourse.provider) {
-                        courses.push(currentCourse);
-                    }
+                    if (currentCourse) courses.push(currentCourse);
                     
-                    // Start new course
                     currentCourse = {
-                        name: '',
+                        name: 'Digital Marketing Certificate',
                         provider: line,
-                        cost: '',
-                        duration: '',
+                        cost: 'Contact for pricing',
+                        duration: 'Varies',
                         format: 'Online',
-                        certification: '',
-                        website: ''
+                        certification: 'Certificate of Completion'
                     };
-                    
-                    // Try to extract course name from the line
-                    if (line.toLowerCase().includes('digital marketing')) {
-                        const parts = line.split(/digital marketing/i);
-                        if (parts.length > 1) {
-                            currentCourse.name = 'Digital Marketing ' + parts[1].trim();
-                        } else {
-                            currentCourse.name = 'Digital Marketing Certificate';
-                        }
-                    } else {
-                        currentCourse.name = 'Digital Marketing Course';
+                } else if (currentCourse) {
+                    // Extract details
+                    if (line.includes('CAD') || line.includes('USD')) {
+                        const match = line.match(/(\$?[\d,]+\s*(?:CAD|USD))/);
+                        if (match) currentCourse.cost = match[1];
                     }
-                } 
-                
-                // Extract details for current course
-                else if (currentCourse) {
-                    // Duration
-                    if ((line.includes('weeks') || line.includes('months') || line.toLowerCase().includes('duration')) && !currentCourse.duration) {
-                        const durationMatch = line.match(/(\d+\s*(?:weeks?|months?))/i) ||
-                                            line.match(/Duration:\s*([^.]+)/i);
-                        if (durationMatch) {
-                            currentCourse.duration = durationMatch[1].trim();
-                        }
-                    }
-                    
-                    // Cost/Fee
-                    if ((line.includes('CAD') || line.includes('USD') || line.toLowerCase().includes('fee') || line.toLowerCase().includes('cost')) && !currentCourse.cost) {
-                        const costMatch = line.match(/(\$?[\d,]+\s*(?:CAD|USD))/i) ||
-                                        line.match(/(\d+\s*CAD)/i) ||
-                                        line.match(/Fee:\s*([^.]+)/i) ||
-                                        line.match(/Cost:\s*([^.]+)/i);
-                        if (costMatch) {
-                            currentCourse.cost = costMatch[1].trim();
-                        }
-                    }
-                    
-                    // Certification
-                    if ((line.toLowerCase().includes('certificate') || line.toLowerCase().includes('certification')) && !currentCourse.certification) {
-                        const certMatch = line.match(/((?:Digital Marketing|Certificate|Certification)[^.]+)/i);
-                        if (certMatch) {
-                            currentCourse.certification = certMatch[1].trim();
-                        } else {
-                            currentCourse.certification = 'Certificate of Completion';
-                        }
-                    }
-                    
-                    // Website
-                    if ((line.includes('http') || line.toLowerCase().includes('website')) && !currentCourse.website) {
-                        const websiteMatch = line.match(/(https?:\/\/[^\s\]]+)/i) ||
-                                           line.match(/Website:\s*([^\s\]]+)/i);
-                        if (websiteMatch) {
-                            currentCourse.website = websiteMatch[1].trim();
-                        }
-                    }
-                    
-                    // Format (online/in-person)
-                    if (line.toLowerCase().includes('online') && currentCourse.format === 'Online') {
-                        currentCourse.format = 'Online';
-                    } else if (line.toLowerCase().includes('in-person') || line.toLowerCase().includes('campus')) {
-                        currentCourse.format = 'In-person';
+                    if (line.includes('weeks') || line.includes('months')) {
+                        const match = line.match(/(\d+\s*(?:weeks?|months?))/);
+                        if (match) currentCourse.duration = match[1];
                     }
                 }
             }
             
-            // Add the last course
-            if (currentCourse && currentCourse.provider) {
-                courses.push(currentCourse);
-            }
-            
-            // Remove duplicates and clean up
-            const uniqueCourses = [];
-            const seenProviders = new Set();
-            
-            courses.forEach(course => {
-                const providerKey = course.provider.toLowerCase().substring(0, 30);
-                if (!seenProviders.has(providerKey)) {
-                    seenProviders.add(providerKey);
-                    
-                    // Set defaults if missing
-                    if (!course.cost) course.cost = 'Contact for pricing';
-                    if (!course.duration) course.duration = 'Varies';
-                    if (!course.certification) course.certification = 'Certificate of Completion';
-                    
-                    uniqueCourses.push(course);
-                }
-            });
-            
-            console.log('Total unique courses parsed:', uniqueCourses.length);
-            uniqueCourses.forEach((course, i) => {
-                console.log(`Course ${i}:`, course.provider.substring(0, 40), '- Cost:', course.cost);
-            });
-            
-            return uniqueCourses;
+            if (currentCourse) courses.push(currentCourse);
+            return courses;
         }
 
         function createCourseCard(course) {
             return `
                 <div class="course-card">
-                    <div class="course-title">${course.name || 'Course Name'}</div>
-                    <div class="course-provider">${course.provider || 'Provider'}</div>
+                    <div class="course-title">${course.name}</div>
+                    <div class="course-provider">${course.provider}</div>
                     <div class="course-details">
                         <div class="detail-row">
                             <span class="detail-label">Cost:</span>
-                            <span class="detail-value cost-highlight">${course.cost || 'Contact for pricing'}</span>
+                            <span class="detail-value cost-highlight">${course.cost}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Duration:</span>
-                            <span class="detail-value">${course.duration || 'Varies'}</span>
+                            <span class="detail-value">${course.duration}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Format:</span>
-                            <span class="detail-value">${course.format || 'Online'}</span>
+                            <span class="detail-value">${course.format}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Certification:</span>
                             <span class="detail-value">
-                                <span class="certification-badge">${course.certification || 'Certificate of Completion'}</span>
+                                <span class="certification-badge">${course.certification}</span>
                             </span>
                         </div>
-                        ${course.website ? `<div class="detail-row">
-                            <span class="detail-label">Website:</span>
-                            <span class="detail-value"><a href="${course.website}" target="_blank" style="color: #1e3a8a; text-decoration: none;">${course.website}</a></span>
-                        </div>` : ''}
                     </div>
                 </div>
             `;
@@ -831,13 +464,7 @@
         function showError(message) {
             document.getElementById('loading').style.display = 'none';
             document.getElementById('error').style.display = 'block';
-            document.getElementById('error').innerHTML = `
-                <h3>❌ Research Error</h3>
-                <p>${message}</p>
-                <div class="back-link">
-                    <a href="javascript:history.back()">← Back to try again</a>
-                </div>
-            `;
+            document.querySelector('#error p').textContent = message;
         }
 
         function copyFormattedResults() {
@@ -845,59 +472,30 @@
             const courses = Array.from(document.querySelectorAll('.course-card')).map(card => {
                 const title = card.querySelector('.course-title').textContent;
                 const provider = card.querySelector('.course-provider').textContent;
-                const details = Array.from(card.querySelectorAll('.detail-row')).map(row => {
-                    const label = row.querySelector('.detail-label').textContent;
-                    const value = row.querySelector('.detail-value').textContent;
-                    return `${label} ${value}`;
-                }).join(', ');
-                return `• ${title} (${provider}) - ${details}`;
+                return `• ${title} - ${provider}`;
             }).join('\n');
 
-        }
-
-        function copyDetailedResults() {
-            const fullText = researchData ? JSON.stringify(researchData, null, 2) : 'No detailed data available';
-            copyToClipboard(fullText);
-        }
-
-        function copyToClipboard(text) {
+            const text = `ETG Research Results\nQuery: ${queryText}\n\nSummary:\n${summary}\n\nOptions:\n${courses}`;
             navigator.clipboard.writeText(text).then(() => {
-                const successMsg = document.getElementById('successMessage');
-                successMsg.classList.add('show');
-                setTimeout(() => {
-                    successMsg.classList.remove('show');
-                }, 3000);
-            }).catch(err => {
-                console.error('Failed to copy text: ', err);
-                alert('Failed to copy to clipboard. Please select and copy manually.');
+                const msg = document.getElementById('successMessage');
+                msg.classList.add('show');
+                setTimeout(() => msg.classList.remove('show'), 3000);
             });
         }
 
         function downloadResults() {
             const summary = document.getElementById('summaryContent').textContent;
-            const courses = Array.from(document.querySelectorAll('.course-card')).map(card => {
-                const title = card.querySelector('.course-title').textContent;
-                const provider = card.querySelector('.course-provider').textContent;
-                return `${title} - ${provider}`;
-            }).join('\n');
-
-            const content = `ETG Research Results\n\nQuery: ${queryText}\n\nSummary:\n${summary}\n\nTraining Options:\n${courses}`;
-            
+            const content = `ETG Research Results\nQuery: ${queryText}\nSummary: ${summary}`;
             const blob = new Blob([content], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = 'etg-research-results.txt';
-            document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+            URL.revokeObjectURL(url);
         }
 
-        // Start research when page loads
-        window.onload = function() {
-            fetchResearchData();
-        };
+        window.onload = fetchResearchData;
     </script>
 </body>
 </html>
