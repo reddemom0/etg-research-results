@@ -309,6 +309,7 @@
                         console.log('Parsed research_data:', parsed);
                         
                         if (parsed.message && parsed.message.content) {
+                            console.log('Extracted content:', parsed.message.content);
                             return parsed.message.content;
                         }
                         return parsed.content || parsed;
@@ -316,13 +317,14 @@
                         console.log('Parse error:', e);
                         return data.research_data;
                     }
-                } else {
-                    return data.research_data.content || data.research_data;
+                } else if (data.research_data.content) {
+                    return data.research_data.content;
                 }
             }
             
-            // Fallback
-            return data.content || JSON.stringify(data, null, 2);
+            // Fallback - but this shouldn't happen with your data structure
+            console.log('Using fallback extraction');
+            return "Content extraction failed. Please check the console for debugging info.";
         }
 
         function formatContent(content) {
