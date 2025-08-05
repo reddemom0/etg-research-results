@@ -299,32 +299,44 @@
         }
 
         function extractContent(data) {
-            console.log('Raw data:', data);
+            console.log('Raw data received:', data);
             
-            // Extract from the nested JSON structure
+            // Handle the specific structure from your webhook
             if (data.research_data) {
+                // If research_data is a string, parse it
                 if (typeof data.research_data === 'string') {
                     try {
-                        const parsed = JSON.parse(data.research_data);
-                        console.log('Parsed research_data:', parsed);
+                        // First level of parsing
+                        const firstParse = JSON.parse(data.research_data);
+                        console.log('First parse result:', firstParse);
                         
-                        if (parsed.message && parsed.message.content) {
-                            console.log('Extracted content:', parsed.message.content);
-                            return parsed.message.content;
+                        // Look for message.content in the parsed result
+                        if (firstParse.message && firstParse.message.content) {
+                            console.log('Found content in message:', firstParse.message.content);
+                            return firstParse.message.content;
                         }
-                        return parsed.content || parsed;
-                    } catch (e) {
-                        console.log('Parse error:', e);
+                        
+                        // If no message.content, return the whole parsed content
+                        return firstParse;
+                        
+                    } catch (parseError) {
+                        console.log('JSON parse failed:', parseError);
+                        // If parsing fails, return the raw string
                         return data.research_data;
                     }
-                } else if (data.research_data.content) {
-                    return data.research_data.content;
+                }
+                // If research_data is already an object
+                else if (typeof data.research_data === 'object') {
+                    if (data.research_data.message && data.research_data.message.content) {
+                        return data.research_data.message.content;
+                    }
+                    return data.research_data.content || data.research_data;
                 }
             }
             
-            // Fallback - but this shouldn't happen with your data structure
-            console.log('Using fallback extraction');
-            return "Content extraction failed. Please check the console for debugging info.";
+            // Ultimate fallback
+            console.log('No valid content found, using fallback');
+            return "Unable to extract content from the research data.";
         }
 
         function formatContent(content) {
