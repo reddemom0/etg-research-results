@@ -305,29 +305,50 @@
             if (data.research_data) {
                 // Check if research_data is an object with a content property
                 if (data.research_data.content && typeof data.research_data.content === 'string') {
+                    let contentString = data.research_data.content;
+                    console.log('Content string:', contentString.substring(0, 200));
+                    
                     try {
-                        // Parse the content string which contains the nested JSON
-                        const contentParsed = JSON.parse(data.research_data.content);
-                        console.log('Parsed content:', contentParsed);
+                        // Try to parse the content string
+                        const contentParsed = JSON.parse(contentString);
+                        console.log('Parsed content successfully:', contentParsed);
                         
-                        // Now look for research_data in the parsed content
+                        // Look for research_data in the parsed content
                         if (contentParsed.research_data && typeof contentParsed.research_data === 'string') {
-                            const finalParsed = JSON.parse(contentParsed.research_data);
-                            console.log('Final parsed:', finalParsed);
-                            
-                            if (finalParsed.message && finalParsed.message.content) {
-                                console.log('Found final content:', finalParsed.message.content);
-                                return finalParsed.message.content;
+                            try {
+                                const finalParsed = JSON.parse(contentParsed.research_data);
+                                if (finalParsed.message && finalParsed.message.content) {
+                                    return finalParsed.message.content;
+                                }
+                            } catch (innerError) {
+                                console.log('Inner parse failed, using research_data string:', innerError);
+                                return contentParsed.research_data;
                             }
                         }
                         
                     } catch (parseError) {
-                        console.log('Parse error:', parseError);
-                        return data.research_data.content;
+                        console.log('JSON parse failed, extracting manually:', parseError);
+                        
+                        // Manual extraction when JSON is malformed
+                        // Look for content between "content":" and the next major delimiter
+                        const contentMatch = contentString.match(/"content":"(.*?)(?:"}\s*Several|\n|$)/s);
+                        if (contentMatch) {
+                            let extractedContent = contentMatch[1];
+                            // Clean up escape characters
+                            extractedContent = extractedContent
+                                .replace(/\\n/g, '\n')
+                                .replace(/\\"/g, '"')
+                                .replace(/\\\\/g, '\\');
+                            console.log('Manually extracted content:', extractedContent.substring(0, 200));
+                            return extractedContent;
+                        }
+                        
+                        // If manual extraction fails, return the raw content
+                        return contentString;
                     }
                 }
                 
-                // If research_data is a string, parse it
+                // If research_data is a string, try to parse it
                 else if (typeof data.research_data === 'string') {
                     try {
                         const parsed = JSON.parse(data.research_data);
