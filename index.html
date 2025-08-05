@@ -299,22 +299,38 @@
         }
 
         function extractContent(data) {
+            console.log('Raw data:', data);
+            
             // Extract from the nested JSON structure
             if (data.research_data) {
-                try {
-                    const parsed = JSON.parse(data.research_data);
-                    if (parsed.message && parsed.message.content) {
-                        return parsed.message.content;
+                if (typeof data.research_data === 'string') {
+                    try {
+                        const parsed = JSON.parse(data.research_data);
+                        console.log('Parsed research_data:', parsed);
+                        
+                        if (parsed.message && parsed.message.content) {
+                            return parsed.message.content;
+                        }
+                        return parsed.content || parsed;
+                    } catch (e) {
+                        console.log('Parse error:', e);
+                        return data.research_data;
                     }
-                    return parsed.content || data.research_data;
-                } catch (e) {
-                    return data.research_data;
+                } else {
+                    return data.research_data.content || data.research_data;
                 }
             }
-            return JSON.stringify(data);
+            
+            // Fallback
+            return data.content || JSON.stringify(data, null, 2);
         }
 
         function formatContent(content) {
+            // Ensure content is a string
+            if (typeof content !== 'string') {
+                content = JSON.stringify(content, null, 2);
+            }
+            
             // Clean up the content and format it nicely
             content = content.replace(/\\n/g, '\n').replace(/\\"/g, '"');
             
