@@ -342,6 +342,22 @@
                                 .replace(/\\"/g, '"')
                                 .replace(/\\\\/g, '\\');
                             
+                            // Generic duplicate removal - split content in half and check for similarity
+                            const contentLength = extractedContent.length;
+                            const midPoint = Math.floor(contentLength / 2);
+                            
+                            // Take the first 100 characters as a signature
+                            const firstPart = extractedContent.substring(0, 100).trim();
+                            
+                            // Look for this signature appearing again later in the content
+                            const secondOccurrence = extractedContent.indexOf(firstPart, 200); // Start looking after first 200 chars
+                            
+                            if (secondOccurrence > -1) {
+                                // Found duplicate, cut off at the second occurrence
+                                extractedContent = extractedContent.substring(0, secondOccurrence).trim();
+                                console.log('Removed duplicate content using signature method, new length:', extractedContent.length);
+                            }
+                            
                             console.log('Cleaned extracted content:', extractedContent.substring(0, 200));
                             return extractedContent;
                         }
