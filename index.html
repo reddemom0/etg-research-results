@@ -330,16 +330,27 @@
                         console.log('JSON parse failed, extracting manually:', parseError);
                         
                         // Manual extraction when JSON is malformed
-                        // Look for content between "content":" and the next major delimiter
-                        const contentMatch = contentString.match(/"content":"(.*?)(?:"}\s*Several|\n|$)/s);
+                        // Look for content after "content":" and extract everything until the end
+                        const contentMatch = contentString.match(/"content":"(.*?)(?:"}\s*\{|\"}Several|\n*$)/s);
                         if (contentMatch) {
                             let extractedContent = contentMatch[1];
+                            console.log('Raw extracted content length:', extractedContent.length);
+                            
                             // Clean up escape characters
                             extractedContent = extractedContent
                                 .replace(/\\n/g, '\n')
                                 .replace(/\\"/g, '"')
                                 .replace(/\\\\/g, '\\');
-                            console.log('Manually extracted content:', extractedContent.substring(0, 200));
+                            
+                            console.log('Cleaned extracted content:', extractedContent.substring(0, 200));
+                            return extractedContent;
+                        }
+                        
+                        // If that doesn't work, try a broader search
+                        const broadMatch = contentString.match(/Several certified and legitimate.*$/s);
+                        if (broadMatch) {
+                            let extractedContent = broadMatch[0];
+                            console.log('Broad match found:', extractedContent.substring(0, 200));
                             return extractedContent;
                         }
                         
